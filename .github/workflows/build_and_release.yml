@@ -67,7 +67,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: injector-binary-${{ matrix.architecture }}
-          path: ${{ matrix.final_name }}
+          path: |
+            ${{ matrix.final_name }}
+            chrome_decrypt.enc
 
   create_release:
     name: Create GitHub Release
@@ -112,6 +114,9 @@ jobs:
             **Contents:**
             - `chromelevator_x64.exe`
             - `chromelevator_arm64.exe`
+            - `chrome_decrypt.enc`
+
+            > **Note:** Place `chrome_decrypt.enc` in the same directory as the executable.
           draft: false
           prerelease: false
           files: ${{ steps.zip_package.outputs.zip_path }}

@@ -138,8 +138,10 @@ You can find the latest pre-compiled binaries on the [**Releases page**](https:/
 
 **Release Package Contents:**
 
-- `chromelevator_x64.exe`
-- `chromelevator_arm64.exe`
+- `chromelevator_x64.exe` + `chrome_decrypt.enc`
+- `chromelevator_arm64.exe` + `chrome_decrypt.enc`
+
+> **Note:** The encrypted payload file (`chrome_decrypt.enc`) must be placed in the same directory as the executable.
 
 ## 🚀 Usage
 
