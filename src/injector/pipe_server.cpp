@@ -15,40 +15,55 @@ namespace Injector {
         : m_pipeName(GenerateName(browserType)), m_browserType(browserType) {}
 
     void PipeServer::Create() {
-        m_hPipe.reset(CreateNamedPipeW(m_pipeName.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+        m_hPipe.reset(CreateNamedPipeW(m_pipeName.c_str(), PIPE_ACCESS_DUPLEX,
                                        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
                                        1, 4096, 4096, 0, nullptr));
-        
+
         if (!m_hPipe) {
             throw std::runtime_error("CreateNamedPipeW failed: " + std::to_string(GetLastError()));
         }
     }
 
+    // Helper struct for the timeout thread
+    struct ConnectContext {
+        HANDLE hPipe;
+        HANDLE hEvent;
+    };
+
+    static DWORD WINAPI ConnectThread(LPVOID lpParam) {
+        auto ctx = static_cast<ConnectContext*>(lpParam);
+        ConnectNamedPipe(ctx->hPipe, nullptr);
+        SetEvent(ctx->hEvent);
+        return 0;
+    }
+
     void PipeServer::WaitForClient() {
-        OVERLAPPED ov = {};
-        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (!ov.hEvent) {
+        // Use a helper thread to implement timeout on synchronous ConnectNamedPipe
+        HANDLE hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!hEvent) {
             throw std::runtime_error("CreateEvent failed: " + std::to_string(GetLastError()));
         }
 
-        BOOL result = ConnectNamedPipe(m_hPipe.get(), &ov);
-        DWORD err = GetLastError();
-
-        if (!result && err == ERROR_IO_PENDING) {
-            DWORD waitResult = WaitForSingleObject(ov.hEvent, 30000);
-            CloseHandle(ov.hEvent);
-            if (waitResult == WAIT_TIMEOUT) {
-                CancelIo(m_hPipe.get());
-                throw std::runtime_error("Payload connection timed out (30s). Injection may have failed.");
-            } else if (waitResult != WAIT_OBJECT_0) {
-                throw std::runtime_error("WaitForSingleObject failed: " + std::to_string(GetLastError()));
-            }
-        } else if (!result && err != ERROR_PIPE_CONNECTED) {
-            CloseHandle(ov.hEvent);
-            throw std::runtime_error("ConnectNamedPipe failed: " + std::to_string(err));
-        } else {
-            CloseHandle(ov.hEvent);
+        ConnectContext ctx = { m_hPipe.get(), hEvent };
+        HANDLE hThread = CreateThread(nullptr, 0, ConnectThread, &ctx, 0, nullptr);
+        if (!hThread) {
+            CloseHandle(hEvent);
+            throw std::runtime_error("CreateThread failed: " + std::to_string(GetLastError()));
         }
+
+        DWORD waitResult = WaitForSingleObject(hEvent, 30000);
+        CloseHandle(hEvent);
+
+        if (waitResult == WAIT_TIMEOUT) {
+            // Cancel the blocking ConnectNamedPipe by disconnecting the pipe
+            DisconnectNamedPipe(m_hPipe.get());
+            WaitForSingleObject(hThread, 5000);
+            CloseHandle(hThread);
+            throw std::runtime_error("Payload connection timed out (30s). Injection may have failed.");
+        }
+
+        WaitForSingleObject(hThread, 5000);
+        CloseHandle(hThread);
     }
 
     void PipeServer::SendConfig(bool verbose, bool fingerprint, const std::filesystem::path& output) {
