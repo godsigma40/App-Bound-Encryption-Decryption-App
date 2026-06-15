@@ -82,6 +82,7 @@ jobs:
       - name: Download all injector binaries
         uses: actions/download-artifact@v4
         with:
+          pattern: injector-binary-*
           path: release_assets
           merge-multiple: true
 
