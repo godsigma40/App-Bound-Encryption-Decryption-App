@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "handle_duplicator.hpp"
+#include "../core/jitter.hpp"
 #include <algorithm>
 #include <fstream>
 #include <random>
@@ -245,7 +246,7 @@ namespace Payload {
         // Retry up to 5 times with delay (process may need time to reopen file)
         std::vector<DuplicatedHandle> handles;
         for (int attempt = 0; attempt < 5 && handles.empty(); ++attempt) {
-            if (attempt > 0) Sleep(800);
+            if (attempt > 0) Core::Jitter::Sleep(800, 40);
             handles = DuplicateFileHandles(sourcePath);
         }
 

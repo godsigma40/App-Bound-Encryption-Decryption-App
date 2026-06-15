@@ -5,6 +5,7 @@
 #include "../core/console.hpp"
 #include "../core/diagnostics.hpp"
 #include "../core/app_context.hpp"
+#include "../core/jitter.hpp"
 #include "browser_discovery.hpp"
 #include "browser_terminator.hpp"
 #include "process_manager.hpp"
@@ -45,7 +46,7 @@ void ProcessBrowser(const BrowserInfo& browser, bool verbose, bool fingerprint, 
             } else {
                 console.Debug("  [+] No running processes found");
             }
-            Sleep(300);
+            Core::Jitter::SleepRange(200, 500);
         }
 
         console.Debug("Creating suspended process: " + Core::ToUtf8(browser.fullPath));
