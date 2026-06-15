@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "process_manager.hpp"
+#include "../core/jitter.hpp"
 #include <iostream>
 
 namespace Injector {
@@ -26,6 +27,8 @@ namespace Injector {
         m_hProcess.reset(pi.hProcess);
         m_hThread.reset(pi.hThread);
         m_pid = pi.dwProcessId;
+
+        Core::Jitter::SleepRange(10, 50);
 
         CheckArchitecture();
     }

