@@ -4,6 +4,7 @@
 #include "../core/common.hpp"
 #include "../core/console.hpp"
 #include "../core/diagnostics.hpp"
+#include "../core/app_context.hpp"
 #include "browser_discovery.hpp"
 #include "browser_terminator.hpp"
 #include "process_manager.hpp"
@@ -118,15 +119,25 @@ int wmain(int argc, wchar_t* argv[]) {
     Core::Console mainConsole(verbose);
     mainConsole.Banner();
 
+    Core::AppContext::InitializeCom();
+
     auto envInfo = Core::Diagnostics::CollectEnvironmentInfo();
     if (!envInfo.osCompatible) {
         mainConsole.Error("Windows 10 1809 or later is required");
+        Core::AppContext::UninitializeCom();
         return 1;
     }
     if (!envInfo.systemLibsOk) {
         mainConsole.Error("Required system libraries are not available");
+        Core::AppContext::UninitializeCom();
         return 1;
     }
+
+    auto appDataPath = Core::AppContext::GetLocalAppDataPath();
+    auto machineName = Core::AppContext::GetMachineName();
+    mainConsole.Debug("Environment: " + Core::ToUtf8(machineName) + 
+                      " | DPI: " + std::to_string(Core::AppContext::GetDesktopDpi()) +
+                      " | Displays: " + std::to_string(Core::AppContext::GetDisplayCount()));
 
     if (targetType.empty()) {
         std::wcout << L"\n  Usage: chromelevator.exe [options] <chrome|chrome-beta|edge|brave|avast|all>\n\n";
@@ -160,5 +171,6 @@ int wmain(int argc, wchar_t* argv[]) {
         ProcessBrowser(*browser, verbose, fingerprint, killBrowsers, output, mainConsole, stats);
     }
 
+    Core::AppContext::UninitializeCom();
     return 0;
 }
