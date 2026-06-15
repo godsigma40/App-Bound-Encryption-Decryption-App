@@ -3,7 +3,6 @@
 
 #include "pipe_server.hpp"
 #include "../core/console.hpp"
-#include "../core/jitter.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -69,13 +68,13 @@ namespace Injector {
 
     void PipeServer::SendConfig(bool verbose, bool fingerprint, const std::filesystem::path& output) {
         Write(verbose ? "VERBOSE_TRUE" : "VERBOSE_FALSE");
-        Core::Jitter::SleepRange(5, 20);
+        Sleep(10);
         Write(fingerprint ? "FINGERPRINT_TRUE" : "FINGERPRINT_FALSE");
-        Core::Jitter::SleepRange(5, 20);
+        Sleep(10);
         Write(output.string());
-        Core::Jitter::SleepRange(5, 20);
+        Sleep(10);
         Write(Core::ToUtf8(m_browserType));
-        Core::Jitter::SleepRange(5, 20);
+        Sleep(10);
     }
 
     void PipeServer::Write(const std::string& msg) {
@@ -102,7 +101,7 @@ namespace Injector {
             }
 
             if (available == 0) {
-                Core::Jitter::Sleep(100, 40);
+                Sleep(100);
                 continue;
             }
 

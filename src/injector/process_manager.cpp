@@ -3,7 +3,6 @@
 
 #include "process_manager.hpp"
 #include "../sys/internal_api.hpp"
-#include "../core/jitter.hpp"
 #include <iostream>
 
 namespace Injector {
@@ -28,8 +27,6 @@ namespace Injector {
         m_hProcess.reset(pi.hProcess);
         m_hThread.reset(pi.hThread);
         m_pid = pi.dwProcessId;
-
-        Core::Jitter::SleepRange(10, 50);
 
         CheckArchitecture();
     }

