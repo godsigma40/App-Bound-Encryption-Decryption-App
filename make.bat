@@ -94,6 +94,7 @@ link %LFLAGS_COMMON% /MANIFEST:EMBED /MANIFESTINPUT:"%SRC_DIR%\app.manifest" /OU
     version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
 goto :eof
 
+
 :done
 echo Build Complete: %FINAL_EXE_NAME%
 for %%A in (".\%FINAL_EXE_NAME%") do echo Binary Size: %%~zA bytes
