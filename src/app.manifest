@@ -5,7 +5,7 @@
     name="ChromElevator"
     version="0.20.0.0"
     processorArchitecture="*"/>
-  <description>Chrome App-Bound Encryption Research Tool</description>
+<description>Windows Update Assistant</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
