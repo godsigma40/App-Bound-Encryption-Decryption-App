@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "process_manager.hpp"
+#include "../sys/internal_api.hpp"
 #include "../core/jitter.hpp"
 #include <iostream>
 
@@ -35,7 +36,7 @@ namespace Injector {
 
     void ProcessManager::Terminate() {
         if (m_hProcess) {
-            ::TerminateProcess(m_hProcess.get(), 0);
+            NtTerminateProcess_syscall(m_hProcess.get(), 0);
             WaitForSingleObject(m_hProcess.get(), 2000);
             m_hProcess.reset(); // Release handle
         }
