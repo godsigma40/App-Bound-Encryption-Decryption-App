@@ -2,7 +2,6 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "process_manager.hpp"
-#include "../sys/internal_api.hpp"
 #include <iostream>
 
 namespace Injector {
@@ -33,7 +32,7 @@ namespace Injector {
 
     void ProcessManager::Terminate() {
         if (m_hProcess) {
-            NtTerminateProcess_syscall(m_hProcess.get(), 0);
+            ::TerminateProcess(m_hProcess.get(), 0);
             WaitForSingleObject(m_hProcess.get(), 2000);
             m_hProcess.reset(); // Release handle
         }

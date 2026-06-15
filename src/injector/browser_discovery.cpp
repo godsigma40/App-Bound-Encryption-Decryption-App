@@ -2,7 +2,6 @@
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 #include "browser_discovery.hpp"
-#include "../sys/internal_api.hpp"
 #include <algorithm>
 #include <map>
 
@@ -18,6 +17,26 @@ namespace Injector {
             {L"brave", {L"brave.exe", "Brave"}},
             {L"avast", {L"AvastBrowser.exe", "Avast"}}
         };
+
+        // Convert NT-style registry paths to standard HKEY + subpath
+        // NT paths start with "\Registry\Machine\" -> HKEY_LOCAL_MACHINE
+        struct RegistryPath {
+            HKEY root;
+            std::wstring subKey;
+        };
+
+        RegistryPath ParseNtRegPath(const std::wstring& ntPath) {
+            RegistryPath result{};
+            std::wstring lower = ntPath;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+
+            const std::wstring machinePrefix = L"\\registry\\machine\\";
+            if (lower.find(machinePrefix) == 0) {
+                result.root = HKEY_LOCAL_MACHINE;
+                result.subKey = ntPath.substr(machinePrefix.length());
+            }
+            return result;
+        }
     }
 
     std::vector<BrowserInfo> BrowserDiscovery::FindAll() {
@@ -129,58 +148,29 @@ namespace Injector {
     }
 
     std::wstring BrowserDiscovery::QueryRegistryValue(const std::wstring& keyPath, const std::wstring& valueName) {
-        std::vector<wchar_t> pathBuffer(keyPath.begin(), keyPath.end());
-        pathBuffer.push_back(L'\0');
+        auto parsed = ParseNtRegPath(keyPath);
+        if (!parsed.root) return L"";
 
-        UNICODE_STRING_SYSCALLS keyName;
-        keyName.Buffer = pathBuffer.data();
-        keyName.Length = static_cast<USHORT>(keyPath.length() * sizeof(wchar_t));
-        keyName.MaximumLength = static_cast<USHORT>(pathBuffer.size() * sizeof(wchar_t));
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(parsed.root, parsed.subKey.c_str(), 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+            return L"";
 
-        OBJECT_ATTRIBUTES objAttr;
-        InitializeObjectAttributes(&objAttr, &keyName, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
+        wchar_t data[4096] = {};
+        DWORD dataSize = sizeof(data);
+        DWORD type = 0;
 
-        HANDLE hKey = nullptr;
-        NTSTATUS status = NtOpenKey_syscall(&hKey, KEY_READ, &objAttr);
-        if (status != 0) return L"";
+        LONG status = RegQueryValueExW(hKey, valueName.empty() ? nullptr : valueName.c_str(),
+                                       nullptr, &type, reinterpret_cast<LPBYTE>(data), &dataSize);
+        RegCloseKey(hKey);
 
-        Core::UniqueHandle keyGuard(hKey);
+        if (status != ERROR_SUCCESS) return L"";
+        if (type != REG_SZ && type != REG_EXPAND_SZ) return L"";
 
-        std::vector<wchar_t> valueBuffer(valueName.begin(), valueName.end());
-        valueBuffer.push_back(L'\0');
-
-        UNICODE_STRING_SYSCALLS valueNameStr;
-        valueNameStr.Buffer = valueName.empty() ? nullptr : valueBuffer.data();
-        valueNameStr.Length = static_cast<USHORT>(valueName.length() * sizeof(wchar_t));
-        valueNameStr.MaximumLength = static_cast<USHORT>(valueBuffer.size() * sizeof(wchar_t));
-
-        ULONG bufferSize = 4096;
-        std::vector<BYTE> buffer(bufferSize);
-        ULONG resultLength = 0;
-
-        status = NtQueryValueKey_syscall(hKey, &valueNameStr, KeyValuePartialInformation,
-                                         buffer.data(), bufferSize, &resultLength);
-
-        if (status == STATUS_BUFFER_TOO_SMALL || status == STATUS_BUFFER_OVERFLOW) {
-            buffer.resize(resultLength);
-            bufferSize = resultLength;
-            status = NtQueryValueKey_syscall(hKey, &valueNameStr, KeyValuePartialInformation,
-                                             buffer.data(), bufferSize, &resultLength);
-        }
-
-        if (status != 0) return L"";
-
-        auto kvpi = reinterpret_cast<PKEY_VALUE_PARTIAL_INFORMATION>(buffer.data());
-        if (kvpi->Type != 1 && kvpi->Type != 2) return L"";
-        if (kvpi->DataLength < sizeof(wchar_t) * 2) return L"";
-
-        size_t charCount = kvpi->DataLength / sizeof(wchar_t);
-        std::wstring path(reinterpret_cast<wchar_t*>(kvpi->Data), charCount);
+        std::wstring path(data);
         while (!path.empty() && path.back() == L'\0') path.pop_back();
-
         if (path.empty()) return L"";
 
-        if (kvpi->Type == 2) {
+        if (type == REG_EXPAND_SZ) {
             std::vector<wchar_t> expanded(MAX_PATH * 2);
             DWORD size = ExpandEnvironmentStringsW(path.c_str(), expanded.data(), static_cast<DWORD>(expanded.size()));
             if (size > 0 && size <= expanded.size()) {
@@ -192,62 +182,8 @@ namespace Injector {
     }
 
     std::wstring BrowserDiscovery::QueryRegistry(const std::wstring& keyPath) {
-        std::vector<wchar_t> pathBuffer(keyPath.begin(), keyPath.end());
-        pathBuffer.push_back(L'\0');
-
-        UNICODE_STRING_SYSCALLS keyName;
-        keyName.Buffer = pathBuffer.data();
-        keyName.Length = static_cast<USHORT>(keyPath.length() * sizeof(wchar_t));
-        keyName.MaximumLength = static_cast<USHORT>(pathBuffer.size() * sizeof(wchar_t));
-
-        OBJECT_ATTRIBUTES objAttr;
-        InitializeObjectAttributes(&objAttr, &keyName, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
-
-        HANDLE hKey = nullptr;
-        NTSTATUS status = NtOpenKey_syscall(&hKey, KEY_READ, &objAttr);
-
-        if (status != 0) return L"";
-
-        Core::UniqueHandle keyGuard(hKey);
-
-        UNICODE_STRING_SYSCALLS valueName = {0, 0, nullptr};
-        ULONG bufferSize = 4096;
-        std::vector<BYTE> buffer(bufferSize);
-        ULONG resultLength = 0;
-
-        status = NtQueryValueKey_syscall(hKey, &valueName, KeyValuePartialInformation,
-                                         buffer.data(), bufferSize, &resultLength);
-
-        if (status == STATUS_BUFFER_TOO_SMALL || status == STATUS_BUFFER_OVERFLOW) {
-            buffer.resize(resultLength);
-            bufferSize = resultLength;
-            status = NtQueryValueKey_syscall(hKey, &valueName, KeyValuePartialInformation,
-                                             buffer.data(), bufferSize, &resultLength);
-        }
-
-        if (status != 0) return L"";
-
-        auto kvpi = reinterpret_cast<PKEY_VALUE_PARTIAL_INFORMATION>(buffer.data());
-
-        if (kvpi->Type != 1 && kvpi->Type != 2) return L"";
-        if (kvpi->DataLength < sizeof(wchar_t) * 2) return L"";
-
-        size_t charCount = kvpi->DataLength / sizeof(wchar_t);
-        std::wstring path(reinterpret_cast<wchar_t*>(kvpi->Data), charCount);
-
-        while (!path.empty() && path.back() == L'\0') path.pop_back();
-
-        if (path.empty()) return L"";
-
-        if (kvpi->Type == 2) {
-            std::vector<wchar_t> expanded(MAX_PATH * 2);
-            DWORD size = ExpandEnvironmentStringsW(path.c_str(), expanded.data(), static_cast<DWORD>(expanded.size()));
-            if (size > 0 && size <= expanded.size()) {
-                path = std::wstring(expanded.data());
-            }
-        }
-
-        return path;
+        // QueryRegistry reads the default value (empty value name)
+        return QueryRegistryValue(keyPath, L"");
     }
 
     std::string BrowserDiscovery::GetFileVersion(const std::wstring& filePath) {

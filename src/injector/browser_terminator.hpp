@@ -57,7 +57,7 @@ namespace Injector {
         std::vector<ProcessEntry> GetRunningProcesses(const std::wstring& exeName) const;
 
     private:
-        // Process enumeration using NtGetNextProcess syscall
+        // Process enumeration via Toolhelp snapshot
         std::vector<ProcessEntry> EnumerateProcesses(const std::wstring& targetExeName) const;
 
         // Build process tree (find all children recursively)
@@ -66,7 +66,7 @@ namespace Injector {
         // Terminate a single process by PID
         bool TerminateProcess(DWORD pid, const TerminationOptions& opts);
 
-        // Open process handle with syscall
+        // Open process handle
         Core::UniqueHandle OpenProcessHandle(DWORD pid, ACCESS_MASK access) const;
 
         // Read process command line
