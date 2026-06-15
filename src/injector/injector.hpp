@@ -19,7 +19,6 @@ namespace Injector {
     private:
         void LoadAndDecryptPayload();
         std::filesystem::path GetPayloadFilePath();
-        DWORD GetExportOffset(const char* exportName);
         
         ProcessManager& m_process;
         const Core::Console& m_console;

